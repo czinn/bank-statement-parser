@@ -3,9 +3,9 @@ use std::path::Path;
 use chrono::naive::NaiveDate as Date;
 use nom::{
     branch::alt,
-    bytes::complete::tag,
+    bytes::complete::{tag, take_until},
     character::complete::{anychar, char, digit1, multispace0, multispace1},
-    combinator::{peek, recognize},
+    combinator::{opt, peek, recognize},
     error::{Error, ErrorKind},
     multi::{many0, many1_count, many_till},
     sequence::{delimited, preceded, separated_pair},
@@ -20,6 +20,7 @@ use crate::statement_format::StatementFormat;
 pub enum TransactionType {
     Deposit,
     Withdrawal,
+    Fee,
 }
 
 #[derive(Debug)]
@@ -35,6 +36,8 @@ pub struct BankOfAmericaDebitStatement {
     account_number: String,
     start_date: Date,
     end_date: Date,
+    start_balance: i32,
+    end_balance: i32,
     transactions: Vec<Transaction>,
 }
 
@@ -82,7 +85,7 @@ fn transaction_section<'a>(
     transaction_type: TransactionType,
 ) -> IResult<&'a str, Vec<Transaction>> {
     let (input, ()) = take_until_including(section_header)(input)?;
-    let (input, _) = delimited(multispace0, tag("Date Description Amount"), multispace0)(input)?;
+    let (input, _) = delimited(multispace0, alt((tag("Date Description Amount"), tag("Date Transaction description Amount"))), multispace0)(input)?;
     let (input, transactions) = many0(transaction(section_footer, transaction_type))(input)?;
     let (input, _) = tag(section_footer)(input)?;
     let (input, total) = preceded(multispace1, dollar_amount)(input)?;
@@ -95,11 +98,16 @@ fn transaction_section<'a>(
 }
 
 fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaDebitStatement> {
-    let (input, ()) = take_until_including("Account # ")(input)?;
+    let (input, ()) = take_until_including("Account number:")(input)?;
     let (input, account_number) = recognize(many1_count(preceded(multispace0, digit1)))(input)?;
-    let (input, _) = delimited(multispace0, char('!'), multispace0)(input)?;
-    let (input, (start_date, end_date)) =
-        separated_pair(month_word_day_year, tag(" to "), month_word_day_year)(input)?;
+
+    let (input, ()) = take_until_including("Beginning balance on ")(input)?;
+    let (input, start_date) = month_word_day_year(input)?;
+    let (input, start_balance) = preceded(multispace0, dollar_amount)(input)?;
+
+    let (input, ()) = take_until_including("Ending balance on ")(input)?;
+    let (input, end_date) = month_word_day_year(input)?;
+    let (input, end_balance) = preceded(multispace0, dollar_amount)(input)?;
 
     let (input, mut transactions) = transaction_section(
         input,
@@ -114,8 +122,25 @@ fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaDebitStatement> {
         "Total withdrawals and other subtractions",
         TransactionType::Withdrawal,
     )?;
-
     transactions.extend(withdrawals.into_iter());
+
+    let (input, fees_present) = peek(opt(take_until("Service fees")))(input)?;
+    let (input, fees) = if fees_present.is_some() {
+        transaction_section(
+            input,
+            "Service fees",
+            "Total service fees",
+            TransactionType::Withdrawal,
+        )?
+    } else {
+        (input, Vec::new())
+    };
+    transactions.extend(fees.into_iter());
+
+    let computed_total: i32 = transactions.iter().map(|t| t.amount).sum();
+    if end_balance - start_balance != computed_total {
+        return Err(nom::Err::Error(Error::new(input, ErrorKind::Verify)));
+    }
 
     Ok((
         input,
@@ -123,6 +148,8 @@ fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaDebitStatement> {
             account_number: account_number.into(),
             start_date,
             end_date,
+            start_balance,
+            end_balance,
             transactions,
         },
     ))

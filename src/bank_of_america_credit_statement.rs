@@ -38,6 +38,8 @@ pub struct BankOfAmericaCreditStatement {
     account_number: String,
     start_date: Date,
     end_date: Date,
+    start_balance: i32,
+    end_balance: i32,
     transactions: Vec<Transaction>,
     total_interest: i32,
 }
@@ -122,6 +124,11 @@ fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaCreditStatement> {
         Date::from_ymd_opt(start_year, start_month.number_from_month(), start_day).unwrap();
     let end_date = Date::from_ymd_opt(end_year, end_month.number_from_month(), end_day).unwrap();
 
+    let (input, ()) = take_until_including("Previous Balance ")(input)?;
+    let (input, start_balance) = dollar_amount(input)?;
+    let (input, ()) = take_until_including("New Balance Total ")(input)?;
+    let (input, end_balance) = dollar_amount(input)?;
+
     let (input, mut transactions) = transaction_section(
         input,
         start_date,
@@ -161,12 +168,19 @@ fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaCreditStatement> {
         dollar_amount,
     )(input)?;
 
+    let computed_total = transactions.iter().map(|t| t.amount).sum::<i32>() + total_interest;
+    if end_balance - start_balance != computed_total {
+        return Err(nom::Err::Error(Error::new(input, ErrorKind::Verify)));
+    }
+
     Ok((
         input,
         BankOfAmericaCreditStatement {
             account_number,
             start_date,
             end_date,
+            start_balance,
+            end_balance,
             transactions,
             total_interest,
         },
