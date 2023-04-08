@@ -1,20 +1,18 @@
 use std::path::Path;
 
-use chrono::{naive::NaiveDate as Date, Datelike, Month};
-use pdf_extract::extract_text;
-
+use chrono::naive::NaiveDate as Date;
 use nom::{
-    bytes::complete::{is_a, tag, take_until},
-    character::complete::{
-        alpha1, anychar, char, digit1, i32, multispace0, multispace1, u32,
-    },
-    combinator::{map, map_opt, map_res, opt, peek},
-    multi::{many1, many_till, separated_list1},
-    sequence::{delimited, preceded, separated_pair, terminated},
+    bytes::complete::{is_a, tag},
+    character::complete::{anychar, digit1, i32, multispace0, multispace1},
+    combinator::{map, map_opt, opt, peek},
     error::{Error, ErrorKind},
+    multi::{many1, many_till},
+    sequence::{delimited, preceded, separated_pair, terminated},
     IResult,
 };
+use pdf_extract::extract_text;
 
+use crate::common_parsers::*;
 use crate::statement_format::StatementFormat;
 
 #[derive(Debug, Copy, Clone)]
@@ -36,7 +34,7 @@ pub struct Transaction {
 }
 
 #[derive(Debug)]
-pub struct BankOfAmericaStatement {
+pub struct BankOfAmericaCreditStatement {
     account_number: String,
     start_date: Date,
     end_date: Date,
@@ -46,45 +44,6 @@ pub struct BankOfAmericaStatement {
 
 fn account_number(input: &str) -> IResult<&str, String> {
     map(is_a("0123456789 "), |x: &str| x.to_string())(input)
-}
-
-fn month_word(input: &str) -> IResult<&str, Month> {
-    map_res(alpha1, |x: &str| x.parse::<Month>())(input)
-}
-
-fn month_word_day(input: &str) -> IResult<&str, (Month, u32)> {
-    separated_pair(month_word, multispace1, u32)(input)
-}
-
-fn month_day(input: &str) -> IResult<&str, (u32, u32)> {
-    separated_pair(u32, char('/'), u32)(input)
-}
-
-fn infer_year(month: u32, day: u32, start_date: Date) -> Option<Date> {
-    let year = if month < start_date.month() {
-        start_date.year() + 1
-    } else {
-        start_date.year()
-    };
-    Date::from_ymd_opt(year, month, day)
-}
-
-fn dollar_amount(input: &str) -> IResult<&str, i32> {
-    let (input, negate) = opt(char('-'))(input)?;
-    let (input, _) = opt(char('$'))(input)?;
-    let (input, dollars_strs) = separated_list1(char(','), digit1)(input)?;
-    let (input, cents_str) = preceded(char('.'), digit1)(input)?;
-    let cents = cents_str.parse::<i32>().unwrap();
-    let dollars = (dollars_strs.into_iter().collect::<String>())
-        .parse::<i32>()
-        .unwrap();
-    let abs_amount = dollars * 100 + cents;
-    let amount = if negate.is_some() {
-        -abs_amount
-    } else {
-        abs_amount
-    };
-    Ok((input, amount))
 }
 
 fn transaction(
@@ -123,14 +82,6 @@ fn transaction(
     }
 }
 
-fn take_until_including(t: &str) -> impl Fn(&str) -> IResult<&str, ()> + '_ {
-    move |input| {
-        let (input, _) = take_until(t)(input)?;
-        let (input, _) = tag(t)(input)?;
-        Ok((input, ()))
-    }
-}
-
 fn transaction_section<'a>(
     input: &'a str,
     start_date: Date,
@@ -142,10 +93,7 @@ fn transaction_section<'a>(
     let (input, transactions) =
         many1(transaction(start_date, account_number, transaction_type))(input)?;
     let (input, total) = preceded(
-        terminated(
-            take_until_including("FOR THIS PERIOD"),
-            multispace1,
-        ),
+        terminated(take_until_including("FOR THIS PERIOD"), multispace1),
         dollar_amount,
     )(input)?;
     let (input, _) = tag("\n\n")(input)?;
@@ -157,7 +105,7 @@ fn transaction_section<'a>(
     Ok((input, transactions))
 }
 
-fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaStatement> {
+fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaCreditStatement> {
     let (input, ()) = take_until_including("Account# ")(input)?;
     let (input, account_number) = account_number(input)?;
     let (input, _) = multispace0(input)?;
@@ -215,7 +163,7 @@ fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaStatement> {
 
     Ok((
         input,
-        BankOfAmericaStatement {
+        BankOfAmericaCreditStatement {
             account_number,
             start_date,
             end_date,
@@ -225,10 +173,9 @@ fn parse_statement(input: &str) -> IResult<&str, BankOfAmericaStatement> {
     ))
 }
 
-impl StatementFormat for BankOfAmericaStatement {
+impl StatementFormat for BankOfAmericaCreditStatement {
     fn parse_file(path: &Path) -> Self {
         let pdf_text = extract_text(&path).unwrap();
-        println!("{}", pdf_text);
         let (_, statement) = parse_statement(pdf_text.as_str()).unwrap();
         statement
     }

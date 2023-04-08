@@ -1,19 +1,44 @@
 use std::path::Path;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+use pdf_extract::extract_text;
 
-use bank_statement_parser::bank_of_america_statement::BankOfAmericaStatement;
+use bank_statement_parser::bank_of_america_credit_statement::BankOfAmericaCreditStatement;
+use bank_statement_parser::bank_of_america_debit_statement::BankOfAmericaDebitStatement;
 use bank_statement_parser::statement_format::StatementFormat;
+
+#[derive(ValueEnum, Debug, Clone, Copy)]
+enum StatementType {
+    BoaCredit,
+    BoaDebit,
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
 struct Args {
-    #[arg(short, long)]
     filename: String,
+    #[arg(value_enum, short)]
+    type_: StatementType,
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 fn main() {
     let args = Args::parse();
-    let statement = BankOfAmericaStatement::parse_file(&Path::new(&args.filename));
-    println!("{:?}", statement);
+    let path = Path::new(&args.filename);
+    if args.verbose {
+        let pdf_text = extract_text(&path).unwrap();
+        println!("{}", pdf_text);
+    }
+
+    match args.type_ {
+        StatementType::BoaCredit => {
+            let statement = BankOfAmericaCreditStatement::parse_file(&path);
+            println!("{:?}", statement);
+        },
+        StatementType::BoaDebit => {
+            let statement = BankOfAmericaDebitStatement::parse_file(&path);
+            println!("{:?}", statement);
+        },
+    }
 }
