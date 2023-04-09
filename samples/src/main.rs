@@ -5,12 +5,14 @@ use pdf_extract::extract_text;
 
 use bank_statement_parser::bank_of_america_credit_statement::BankOfAmericaCreditStatement;
 use bank_statement_parser::bank_of_america_debit_statement::BankOfAmericaDebitStatement;
+use bank_statement_parser::chase_credit_statement::ChaseCreditStatement;
 use bank_statement_parser::statement_format::StatementFormat;
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 enum StatementType {
     BoaCredit,
     BoaDebit,
+    ChaseCredit,
 }
 
 #[derive(Parser, Debug)]
@@ -38,6 +40,10 @@ fn main() {
         },
         StatementType::BoaDebit => {
             let statement = BankOfAmericaDebitStatement::parse_file(&path);
+            println!("{:?}", statement);
+        },
+        StatementType::ChaseCredit => {
+            let statement = ChaseCreditStatement::parse_file(&path);
             println!("{:?}", statement);
         },
     }

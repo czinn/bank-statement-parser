@@ -4,11 +4,11 @@ use chrono::naive::NaiveDate as Date;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_until},
-    character::complete::{anychar, char, digit1, multispace0, multispace1},
+    character::complete::{anychar, digit1, multispace0, multispace1},
     combinator::{opt, peek, recognize},
     error::{Error, ErrorKind},
     multi::{many0, many1_count, many_till},
-    sequence::{delimited, preceded, separated_pair},
+    sequence::{delimited, preceded},
     IResult,
 };
 use pdf_extract::extract_text;
@@ -85,7 +85,14 @@ fn transaction_section<'a>(
     transaction_type: TransactionType,
 ) -> IResult<&'a str, Vec<Transaction>> {
     let (input, ()) = take_until_including(section_header)(input)?;
-    let (input, _) = delimited(multispace0, alt((tag("Date Description Amount"), tag("Date Transaction description Amount"))), multispace0)(input)?;
+    let (input, _) = delimited(
+        multispace0,
+        alt((
+            tag("Date Description Amount"),
+            tag("Date Transaction description Amount"),
+        )),
+        multispace0,
+    )(input)?;
     let (input, transactions) = many0(transaction(section_footer, transaction_type))(input)?;
     let (input, _) = tag(section_footer)(input)?;
     let (input, total) = preceded(multispace1, dollar_amount)(input)?;

@@ -3,7 +3,7 @@ use nom::{
     bytes::complete::{tag, take_until},
     character::complete::{alpha1, char, digit1, i32, multispace0, multispace1, u32},
     combinator::{map_opt, map_res, opt},
-    multi::separated_list1,
+    multi::separated_list0,
     sequence::{delimited, preceded, separated_pair, tuple},
     IResult,
 };
@@ -44,13 +44,18 @@ pub fn month_word_day_year(input: &str) -> IResult<&str, Date> {
 
 pub fn dollar_amount(input: &str) -> IResult<&str, i32> {
     let (input, negate) = opt(char('-'))(input)?;
+    let (input, _) = opt(char('+'))(input)?;
     let (input, _) = opt(char('$'))(input)?;
-    let (input, dollars_strs) = separated_list1(char(','), digit1)(input)?;
+    let (input, dollars_strs) = separated_list0(char(','), digit1)(input)?;
     let (input, cents_str) = preceded(char('.'), digit1)(input)?;
     let cents = cents_str.parse::<i32>().unwrap();
-    let dollars = (dollars_strs.into_iter().collect::<String>())
-        .parse::<i32>()
-        .unwrap();
+    let dollars = if dollars_strs.len() > 0 {
+        (dollars_strs.into_iter().collect::<String>())
+            .parse::<i32>()
+            .unwrap()
+    } else {
+        0
+    };
     let abs_amount = dollars * 100 + cents;
     let amount = if negate.is_some() {
         -abs_amount
