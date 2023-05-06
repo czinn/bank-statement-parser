@@ -24,24 +24,24 @@ pub enum TransactionType {
 
 #[derive(Debug)]
 pub struct Transaction {
-    type_: TransactionType,
-    date: Date,
-    posting_date: Date,
-    description: String,
-    reference_number: String,
-    account_number: String,
-    amount: i32,
+    pub type_: TransactionType,
+    pub date: Date,
+    pub posting_date: Date,
+    pub description: String,
+    pub reference_number: String,
+    pub account_number: String,
+    pub amount: i32,
 }
 
 #[derive(Debug)]
 pub struct BankOfAmericaCreditStatement {
-    account_number: String,
-    start_date: Date,
-    end_date: Date,
-    start_balance: i32,
-    end_balance: i32,
-    transactions: Vec<Transaction>,
-    total_interest: i32,
+    pub account_number: String,
+    pub start_date: Date,
+    pub end_date: Date,
+    pub start_balance: i32,
+    pub end_balance: i32,
+    pub transactions: Vec<Transaction>,
+    pub total_interest: i32,
 }
 
 fn account_number(input: &str) -> IResult<&str, String> {
